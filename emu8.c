@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <ncurses.h>
 #include <time.h>
+
 
 unsigned short opcode; // two bytes per opcode
 unsigned char memory[4096]; // 4K Memory
@@ -11,7 +13,7 @@ unsigned short pc; // program counter
 unsigned short stack[16]; 
 unsigned short sp; // stack pointer
 
-unsigned char gfx[64][32]; // screen
+unsigned char gfx[2048]; // screen
 
 unsigned char key[16]; // HEX based keypad, 0x0-0xF
 
@@ -42,53 +44,91 @@ unsigned char chip8_fontset[80] =
   0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 }; // geezus christ
 
-
-/*
-The memory map of the chip8 VM
-0x000-0x1FF: chip 8 interpreter (for font set)
-0x050-0x0A0: used for the built in 4x5 pixel font
-0x200-0xFFF: program ROM and work RAM
-*/
-
-void loadROM();
 void clearGFXMemory();
-void init();
-void drawGFX();
+void initEmu();
+void loadROM();
+void outputGFXBuffer();
+int kbhit();
+void unsetKeys();
+void handleKeyboardInput();
 void runCycle();
+
 
 
 int main(int argc, char **argv)
 {
-	
+
 	if(argc < 2)
 	{
 		printf("How to use: ./emu8 chip8application\n\n");
 		return 1;
-	}else{
-		system("clear");
-		init();
-		loadROM(argv[1]);
 	}
 
-	while(1)
+
+	initscr();
+	initEmu();
+	loadROM(argv[1]);
+	nodelay(stdscr, TRUE);	
+	cbreak();
+	noecho();	
+	while(1) // main loop
 	{
-		system("clear");
+
+			handleKeyboardInput();
 		runCycle();
 		if(drawFlag)
-			drawGFX();
-		usleep(3333);
+			outputGFXBuffer();
+		refresh();	
+		usleep(2000);
 	}
-
-
+	getch();
+	endwin();
 
  return 0;
 }
 
-void loadROM(const char *filename)
+
+void clearGFXMemory()
+{
+	for(i = 0; i < 2048; ++i)
+	{	
+		gfx[i] = 0;
+	}
+}
+
+void initEmu()
 {
 
-	init();
+	pc = 0x200;
+	opcode = 0;
+	I = 0;
+	sp = 0;
+	
+	clearGFXMemory();
+
+	for(i = 0; i < 16; ++i)
+	{
+		stack[i] = 0;
+		V[i] = 0;
+		key[i] = 0;
+	}
+
+	for(i = 0; i < 4096; ++i)
+	{
+		memory[i] = 0;
+	}
+	
+	for(i = 0; i < 80; ++i)
+	{
+		memory[i] = chip8_fontset[i];
+	}
+
+}
+
+void loadROM(const char *filename)
+{
 	FILE * pFile = fopen(filename, "rb");
+
 	if (pFile == NULL)
 	{
 		return;
@@ -99,12 +139,14 @@ void loadROM(const char *filename)
 	rewind(pFile);
 
 	char * buffer = (char*)malloc(sizeof(char) * lSize);
+	
 	if (buffer == NULL)
 	{
 		return ;
 	}
 
 	size_t result = fread (buffer, 1, lSize, pFile);
+
 	if (result != lSize)
 	{
 		return;
@@ -123,79 +165,132 @@ void loadROM(const char *filename)
 	free(buffer);
 }
 
-void clearGFXMemory()
+void outputGFXBuffer()
 {
-int i;
-int b;
-	for(i = 0; i < 64; ++i)
-	{
-		for(b = 0; b < 32; ++b)
+
+	int y = 0;
+	int x = 0;
+
+		for(y = 0; y < 32; y++)
 		{
-			gfx[i][b] = 0;
-		}
-	}
-}
-
-void init()
-{
-	pc = 0x200;
-	opcode = 0;
-	I = 0;
-	sp = 0;
-
-	int i;
-
-	for(i = 0; i < 64; ++i)
-	{
-		int b;
-		for(b = 0; b < 32; ++b)
-		{
-			gfx[i][b] = 0;
-		}
-	
-	}
-
-	for(i = 0; i < 16; ++i)
-	{
-		stack[i] = 0;
-		V[i] = 0;
-		key[i] = 0;
-
-	}
-
-	for(i = 0; i < 4096; ++i)
-	{
-		memory[i] = 0;
-	}
-	
-	for(i = 0; i < 80; ++i)
-	{
-		memory[i] = chip8_fontset[i];
-	}
-}
-
-void drawGFX()
-{
-	int x;
-	int y;
-	for(y = 0; y < 32; y++)
-	{
-		for(x = 0; x < 64; x++)
-		{
-			if(gfx[x][y] != 0)
+			for(x = 0; x < 64; x++)
 			{
-				printf("\u25A0");
-			}else{
-				printf(" ");
+				move(y,x);
+
+				if(gfx[x + (y * 64)])
+				{
+					attron(A_REVERSE);
+					printw(" ");
+					attroff(A_REVERSE);
+				}else{
+					printw(" ");
+				}
 			}
 		}
-		printf("\n");
-	}
 }
+
+
+
+
+
+
+int kbhit(void)
+{
+    int ch = getch();
+
+    if (ch != ERR) {
+        ungetch(ch);
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+void unsetKeys()
+{
+	int k;
+
+	for(k = 0; k < 16; k++)
+	{
+		key[k] = 0;
+	}
+
+}
+
+void handleKeyboardInput()
+{
+
+	int pressedKey;
+	
+	
+
+	
+	
+		pressedKey = getch();
+	
+	unsetKeys();
+
+	switch(pressedKey)
+	{
+		case 49:
+			key[0] = 1;		
+			break;	
+		case 50:
+			key[1] = 1;
+			break;
+		case 51:
+			key[2] = 1;
+			break;
+		case 52:
+			key[3] = 1;
+			break;
+		case 113:
+			key[4] = 1;		
+			break;
+		case 119:
+			key[5] = 1;		
+			break;
+		case 101:
+			key[6] = 1;		
+			break;
+		case 114:
+			key[7] = 1;		
+			break;
+		case 97:
+			key[8] = 1;		
+			break;
+		case 115:
+			key[9] = 1;		
+			break;
+		case 100:
+			key[10] = 1;		
+			break;
+		case 102:
+			key[11] = 1;		
+			break;
+		case 121:
+			key[12] = 1;		
+			break;
+		case 120:
+			key[13] = 1;		
+			break;
+		case 99:
+			key[14] = 1;		
+			break;
+		case 118:
+			key[15] = 1;		
+			break;
+		
+		default:
+			break;
+	}
+
+}
+
 
 void runCycle()
 {
-opcode = memory[pc] << 8 | memory[pc + 1];
+	opcode = memory[pc] << 8 | memory[pc + 1];
 	
 	switch(opcode & 0xF000)
 	{		
@@ -203,7 +298,7 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 			switch(opcode & 0x000F)
 			{
 				case 0x0000: 
-					system("clear");					
+					clearGFXMemory(); // this might be bad
 					drawFlag = 1;
 					pc += 2;
 				break;
@@ -215,7 +310,7 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 				break;
 
 				default:
-					printf("Something went wrong!");
+					return;
 			}
 		break;
 
@@ -319,7 +414,7 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 				break;
 
 				default:
-					printf("Something went wrong!");
+					return;
 			}
 		break;
 		
@@ -346,26 +441,29 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 	
 		case 0xD000: 
 {
-				unsigned short x = V[(opcode & 0x0F00) >> 8];
-  				unsigned short y = V[(opcode & 0x00F0) >> 4];
-				unsigned short height = opcode & 0x000F;
-				
-				unsigned short pixel;
-				// THIS HAS TO DRAW A SPRITE
 
-				for (int yline = 0; yline < height; yline++)
+			unsigned short x = V[(opcode & 0x0F00) >> 8];
+			unsigned short y = V[(opcode & 0x00F0) >> 4];
+			unsigned short height = opcode & 0x000F;
+			unsigned short pixel;
+
+			V[0xF] = 0;
+			for (int yline = 0; yline < height; yline++)
+			{
+				pixel = memory[I + yline];
+				for(int xline = 0; xline < 8; xline++)
 				{
-					pixel = memory[I + yline];
-					for(int xline = 0; xline < 8; xline++)
+					if((pixel & (0x80 >> xline)) != 0)
 					{
-						if((pixel & (0x80 >> xline)) != 0)
+						if(gfx[(x + xline + ((y + yline) * 64))] == 1)
 						{
-							if(gfx[x+xline][y+yline == 1])
-								V[0xF] = 1;                                 
-							gfx[x+xline][y+yline] ^=1;
+							V[0xF] = 1;                                    
 						}
+						gfx[x + xline + ((y + yline) * 64)] ^= 1;
 					}
 				}
+			}
+						
 			drawFlag = 1;			
 			pc += 2;
 }
@@ -389,7 +487,7 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 				break;
 
 				default:
-					printf("Something went wrong!");
+					return;
 			}
 		break;
 		
@@ -448,7 +546,7 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 				case 0x0033: // i borrowed this case, no idea what this is doing 
 					memory[I]     = V[(opcode & 0x0F00) >> 8] / 100;
 					memory[I + 1] = (V[(opcode & 0x0F00) >> 8] / 10) % 10;
-					memory[I + 2] = (V[(opcode & 0x0F00) >> 8] % 100) % 10;					
+					memory[I + 2] = (V[(opcode & 0x0F00) >> 8] / 100) % 10;					
 					pc += 2;
 				break;
 
@@ -468,12 +566,12 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 				break;
 
 				default:
-					printf("Something went wrong!");
+					return;
 			}
 		break;
 
 		default:
-					printf("Something went wrong!");
+					return;
 	}	
 
 	if(delay_timer > 0)
@@ -487,5 +585,4 @@ opcode = memory[pc] << 8 | memory[pc + 1];
 		}
 		--sound_timer;
 	}	
-
 }
