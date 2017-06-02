@@ -4,7 +4,6 @@
 #include <ncurses.h>
 #include <time.h>
 
-
 unsigned short opcode; // two bytes per opcode
 unsigned char memory[4096]; // 4K Memory
 unsigned char V[16]; // registers, the last one is used for carry flag
@@ -12,17 +11,13 @@ unsigned short I; // index register
 unsigned short pc; // program counter 
 unsigned short stack[16]; 
 unsigned short sp; // stack pointer
-
 unsigned char gfx[2048]; // screen
-
 unsigned char key[16]; // HEX based keypad, 0x0-0xF
-
 unsigned char delay_timer;
 unsigned char sound_timer;
-
 unsigned char drawFlag = 0;
-
 int i; // general purpose counter
+char pressedKey;
 
 unsigned char chip8_fontset[80] =
 { 
@@ -53,8 +48,6 @@ void unsetKeys();
 void handleKeyboardInput();
 void runCycle();
 
-
-
 int main(int argc, char **argv)
 {
 
@@ -74,12 +67,15 @@ int main(int argc, char **argv)
 	while(1) // main loop
 	{
 
-			handleKeyboardInput();
+		pressedKey = getch();
+		handleKeyboardInput();
 		runCycle();
 		if(drawFlag)
 			outputGFXBuffer();
 		refresh();	
-		usleep(2000);
+		usleep(2200);
+		if(kbhit())
+			unsetKeys();
 	}
 	getch();
 	endwin();
@@ -98,7 +94,6 @@ void clearGFXMemory()
 
 void initEmu()
 {
-
 	pc = 0x200;
 	opcode = 0;
 	I = 0;
@@ -167,7 +162,6 @@ void loadROM(const char *filename)
 
 void outputGFXBuffer()
 {
-
 	int y = 0;
 	int x = 0;
 
@@ -219,17 +213,6 @@ void unsetKeys()
 
 void handleKeyboardInput()
 {
-
-	int pressedKey;
-	
-	
-
-	
-	
-		pressedKey = getch();
-	
-	unsetKeys();
-
 	switch(pressedKey)
 	{
 		case 49:
@@ -439,8 +422,8 @@ void runCycle()
 			pc += 2;
 		break;
 	
-		case 0xD000: 
-{
+		case 0xD000: // I borrowed this case too 
+			{
 
 			unsigned short x = V[(opcode & 0x0F00) >> 8];
 			unsigned short y = V[(opcode & 0x00F0) >> 4];
@@ -466,7 +449,7 @@ void runCycle()
 						
 			drawFlag = 1;			
 			pc += 2;
-}
+			}
 		break;
 			
 		case 0xE000:
